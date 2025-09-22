@@ -1,6 +1,6 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { setCors } from '@/lib/cors';
-import { startVideoRender } from '@/lib/eden';
+import type { NextApiRequest, NextApiResponse } from "next";
+import { setCors } from "@/lib/cors";
+import { startVideoRender } from "@/lib/eden";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (setCors(req, res)) return;
