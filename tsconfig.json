@@ -12,7 +12,7 @@
     // 👇 these two lines fix the “non-relative paths” error
     "baseUrl": ".",
     "paths": {
-      "@/*": ["*"]
+      "@/*": ["./*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
