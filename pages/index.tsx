@@ -1,198 +1,209 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from "react";
 
-type JobStatus = { status: 'queued'|'processing'|'succeeded'|'failed'; progress: number; url?: string };
+/**
+ * Orion Mini (Simulated)
+ * - Simple, clean UI
+ * - Collects: description, tone, format
+ * - Calls /api/render (sim mode) and shows a “result”
+ * - No env keys or other files needed
+ */
+
+const tones = ["Cinematic", "Bold", "Energetic", "Friendly", "Elegant", "Professional"] as const;
+const formats = ["Reel (9:16)", "Story (9:16)", "Square (1:1)", "Wide (16:9)"] as const;
 
 export default function Home() {
-  const [step, setStep] = useState(1);
-  const [prompt, setPrompt] = useState('15s ad for a new coffee shop launch, upbeat and friendly.');
-  const [goal, setGoal] = useState('Traffic');
-  const [industry, setIndustry] = useState('Digital Marketing');
-  const [tone, setTone] = useState('Cinematic');
-  const [formats, setFormats] = useState<string[]>(['Story (9:16)']);
-  const [voiceover, setVoiceover] = useState(true);
+  const [desc, setDesc] = useState("");
+  const [tone, setTone] = useState<(typeof tones)[number]>("Cinematic");
+  const [format, setFormat] = useState<(typeof formats)[number]>("Reel (9:16)");
+  const [loading, setLoading] = useState(false);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [script, setScript] = useState('');
-  const [caption, setCaption] = useState('');
-  const [hashtags, setHashtags] = useState<string[]>([]);
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    setResultUrl(null);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [status, setStatus] = useState<JobStatus | null>(null);
+    try {
+      const res = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: desc,
+          tone,
+          format,
+          simulate: true, // server will simulate a render
+        }),
+      });
 
-  const phoneOrientation = useMemo(() => {
-    if (formats.includes('Wide (16:9)')) return 'horizontal';
-    if (formats.includes('Square (1:1)')) return 'square';
-    return 'vertical';
-  }, [formats]);
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `Render failed (${res.status})`);
+      }
 
-  useEffect(() => {
-    if (!jobId) return;
-    const iv = setInterval(async () => {
-      const r = await fetch(`/api/status?jobId=${encodeURIComponent(jobId)}`);
-      const j = await r.json();
-      setStatus(j);
-      if (j.status === 'succeeded' || j.status === 'failed') clearInterval(iv);
-    }, 900);
-    return () => clearInterval(iv);
-  }, [jobId]);
-
-  const toggleFormat = (f: string) => {
-    setFormats((prev) => prev.includes(f) ? prev.filter(x => x!==f) : [...prev, f]);
-  };
-
-  const onGenerateCopy = async () => {
-    const r = await fetch('/api/voiceover', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
-    });
-    const j = await r.json();
-    setScript(j.script || '');
-    setCaption(j.caption || '');
-    setHashtags(j.hashtags || []);
-    setStep(5);
-  };
-
-  const onRender = async () => {
-    setStatus(null);
-    const r = await fetch('/api/render', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, formats, voiceover })
-    });
-    const j = await r.json();
-    setJobId(j.jobId);
-    setStep(6);
-  };
+      const data = await res.json();
+      // In sim mode, we’ll receive something like { jobId, previewUrl }
+      setResultUrl(data.previewUrl || null);
+    } catch (e: any) {
+      setError(e?.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.center}>
-        <div style={styles.monitor}>
-          <h1 style={{margin:0, fontSize:28}}>What’s your post about today?<span style={{color:'#6a6aff'}}> |</span></h1>
-          <p style={{opacity:.8, marginTop:6}}>I’ll shape your copy & script from a short description.</p>
+    <main style={styles.page}>
+      <div style={styles.card}>
+        <div style={styles.title}>Hi, I’m <span style={{color:"#7aa2ff"}}>Orion</span> — Your Social Media Manager Assistant.</div>
+        <div style={styles.sub}>Tell me what you’re posting today and I’ll mock up your ad (simulated).</div>
 
-          {step===1 && (
-            <div style={styles.card}>
-              <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} style={styles.textarea}/>
-              <div style={styles.row}>
-                <button style={styles.primary} onClick={()=>setStep(2)}>Continue</button>
-              </div>
-            </div>
-          )}
+        <label style={styles.label}>Post description</label>
+        <textarea
+          placeholder="e.g., 15s ad for a new coffee shop launch, upbeat and friendly."
+          style={styles.textarea}
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+        />
 
-          {step===2 && (
-            <div style={styles.card}>
-              <div style={styles.rowWrap}>
-                {['Traffic','Launch','Promo','Awareness'].map(g=>(
-                  <Chip key={g} label={g} active={goal===g} onClick={()=>setGoal(g)}/>
-                ))}
-              </div>
-              <div style={styles.rowWrap}>
-                {['Digital Marketing','eCommerce','SaaS','Real Estate','Other'].map(ind=>(
-                  <Chip key={ind} label={ind} active={industry===ind} onClick={()=>setIndustry(ind)}/>
-                ))}
-              </div>
-              <div style={styles.row}>
-                <button style={styles.secondary} onClick={()=>setStep(1)}>Back</button>
-                <button style={styles.primary} onClick={()=>setStep(3)}>Continue</button>
-              </div>
-            </div>
-          )}
-
-          {step===3 && (
-            <div style={styles.card}>
-              <div style={styles.rowWrap}>
-                {['Cinematic','Bold','Energetic','Elegant','Friendly'].map(t=>(
-                  <Chip key={t} label={t} active={tone===t} onClick={()=>setTone(t)}/>
-                ))}
-              </div>
-              <div style={{...styles.rowWrap, marginTop:10}}>
-                {['Reel (9:16)','Story (9:16)','Square (1:1)','Wide (16:9)','Carousel (Photos)'].map(f=>(
-                  <Chip key={f} label={f} active={formats.includes(f)} onClick={()=>toggleFormat(f)}/>
-                ))}
-              </div>
-              <label style={{display:'flex',alignItems:'center',gap:8,marginTop:12}}>
-                <input type="checkbox" checked={voiceover} onChange={e=>setVoiceover(e.target.checked)} /> Voiceover
-              </label>
-              <div style={styles.row}>
-                <button style={styles.secondary} onClick={()=>setStep(2)}>Back</button>
-                <button style={styles.primary} onClick={()=>setStep(4)}>Continue</button>
-              </div>
-            </div>
-          )}
-
-          {step===4 && (
-            <div style={styles.card}>
-              <p>Generate ad script, caption & hashtags based on your brief.</p>
-              <div style={styles.row}>
-                <button style={styles.secondary} onClick={()=>setStep(3)}>Back</button>
-                <button style={styles.primary} onClick={onGenerateCopy}>Generate Copy</button>
-              </div>
-            </div>
-          )}
-
-          {step===5 && (
-            <div style={styles.card}>
-              <h3>Copy</h3>
-              <div style={styles.copyBlock}><strong>Script:</strong> {script}</div>
-              <div style={styles.copyBlock}><strong>Caption:</strong> {caption}</div>
-              <div style={styles.copyBlock}><strong>Hashtags:</strong> {hashtags.join(' ')}</div>
-              <div style={styles.row}>
-                <button style={styles.secondary} onClick={()=>setStep(4)}>Back</button>
-                <button style={styles.primary} onClick={onRender}>Render Video</button>
-              </div>
-            </div>
-          )}
-
-          {step===6 && (
-            <div style={styles.card}>
-              <h3>Preview</h3>
-              <PhonePreview orientation={phoneOrientation} url={status?.url}/>
-              <div style={{marginTop:10}}>
-                <strong>Status:</strong> {status?.status ?? 'starting…'} — {status?.progress ?? 0}%
-              </div>
-              <div style={styles.row}>
-                <button style={styles.secondary} onClick={()=>setStep(5)}>Back</button>
-                <a style={{...styles.primary, textDecoration:'none'}} href={status?.url || '#'} target="_blank">Open Video</a>
-              </div>
-            </div>
-          )}
+        <div style={styles.row}>
+          <div style={styles.col}>
+            <label style={styles.label}>Tone</label>
+            <select style={styles.select} value={tone} onChange={(e) => setTone(e.target.value as any)}>
+              {tones.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div style={styles.col}>
+            <label style={styles.label}>Format</label>
+            <select style={styles.select} value={format} onChange={(e) => setFormat(e.target.value as any)}>
+              {formats.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
         </div>
+
+        <button
+          onClick={handleGenerate}
+          style={styles.button}
+          disabled={loading || !desc.trim()}
+          title={!desc.trim() ? "Add a short description first" : "Generate (simulated)"}
+        >
+          {loading ? "Generating…" : "Generate (Simulated)"}
+        </button>
+
+        {error && <div style={styles.error}>⚠️ {error}</div>}
+
+        {resultUrl && (
+          <div style={styles.resultBox}>
+            <div style={styles.resultTitle}>Mock Result</div>
+            <div style={styles.resultHint}>This is a simulated link to a rendered asset.</div>
+            <a href={resultUrl} style={styles.link} target="_blank" rel="noreferrer">{resultUrl}</a>
+            <div style={styles.upgrade}>
+              Want real renders + multiple variations? <a href="#" style={styles.link}>Upgrade to FLOWS Pro</a>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  )
+      <footer style={styles.footer}>© Orion Studio — MVP (sim mode)</footer>
+    </main>
+  );
 }
 
-function Chip({label, active, onClick}:{label:string, active?:boolean, onClick?:()=>void}){
-  return (
-    <button onClick={onClick} style={{...styles.chip, ...(active?styles.chipActive:{}), cursor:'pointer'}}>{label}</button>
-  )
-}
-
-function PhonePreview({orientation, url}:{orientation:'vertical'|'horizontal'|'square', url?:string}){
-  const container: any = {position:'relative', width:340, height:680};
-  const videoStyle: any = {position:'absolute', left:30+8, top:70+8, width:280-16, height:540-16, objectFit:'cover', background:'#0b0f14', borderRadius:8};
-  if (orientation==='horizontal'){ videoStyle.objectFit='contain' }
-  if (orientation==='square'){ videoStyle.objectFit='contain' }
-  return (
-    <div style={container}>
-      <img src="/phone-shell.svg" style={{width:'100%',height:'100%'}}/>
-      {url ? <video src={url} autoPlay muted controls style={videoStyle}/> : <div style={{...videoStyle, display:'grid', placeItems:'center', color:'#9aa4b2'}}>Waiting…</div>}
-    </div>
-  )
-}
-
-const styles:any = {
-  page:{minHeight:'100vh', background:'radial-gradient(1200px 800px at 50% -100px, #0f1a26 0%, #070b10 60%, #05070a 100%)', color:'#EAF0FF'},
-  center:{display:'grid', placeItems:'center', padding:'60px 20px'},
-  monitor:{maxWidth:980, width:'100%', border:'1px solid #1a2233', background:'linear-gradient(180deg,#0b1018,#0a0f16)', boxShadow:'0 0 40px rgba(106,106,255,.15)', borderRadius:16, padding:24},
-  card:{marginTop:14, border:'1px solid #243049', borderRadius:12, padding:16, background:'#0e141f'},
-  textarea:{width:'100%', height:120, borderRadius:10, border:'1px solid #2c3a57', background:'#0b111a', color:'#e7efff', padding:12},
-  row:{display:'flex', gap:12, alignItems:'center', justifyContent:'flex-end', marginTop:12},
-  rowWrap:{display:'flex', flexWrap:'wrap', gap:8},
-  chip:{padding:'10px 14px', borderRadius:999, border:'1px solid #2c3a57', background:'#0b111a', color:'#cfe0ff'},
-  chipActive:{border:'1px solid #6a6aff', background:'rgba(106,106,255,.15)'},
-  primary:{background:'linear-gradient(90deg,#6a6aff,#8a8aff)', color:'#05070a', padding:'10px 16px', borderRadius:10, border:'none', fontWeight:700},
-  secondary:{background:'transparent', color:'#cfe0ff', padding:'10px 16px', borderRadius:10, border:'1px solid #2c3a57'},
-  copyBlock:{background:'#0b111a', border:'1px solid #2c3a57', borderRadius:10, padding:10, margin:'8px 0'}
-}
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100svh",
+    background: "radial-gradient(60% 60% at 50% 20%, #0b1220 0%, #05080f 60%, #04060b 100%)",
+    color: "#e8eefc",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "40px 16px",
+    boxSizing: "border-box",
+  },
+  card: {
+    width: "100%",
+    maxWidth: 880,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 16,
+    padding: 24,
+    boxShadow: "0 10px 60px rgba(0,0,0,0.35)",
+    backdropFilter: "blur(8px)",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 700,
+    marginBottom: 8,
+  },
+  sub: {
+    opacity: 0.8,
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 13,
+    opacity: 0.8,
+    margin: "10px 0 6px",
+    display: "block",
+  },
+  textarea: {
+    width: "100%",
+    minHeight: 110,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    padding: 12,
+    outline: "none",
+  },
+  row: {
+    display: "flex",
+    gap: 12,
+    marginTop: 10,
+    flexWrap: "wrap",
+  },
+  col: {
+    flex: 1,
+    minWidth: 220,
+  },
+  select: {
+    width: "100%",
+    height: 40,
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    padding: "0 10px",
+    outline: "none",
+    appearance: "none",
+  },
+  button: {
+    width: "100%",
+    height: 46,
+    marginTop: 16,
+    borderRadius: 12,
+    border: "1px solid rgba(122,162,255,0.35)",
+    background: "linear-gradient(180deg, #87a6ff 0%, #6d8cff 100%)",
+    color: "#071020",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  error: {
+    marginTop: 14,
+    padding: "10px 12px",
+    border: "1px solid rgba(255, 120, 120, 0.4)",
+    background: "rgba(120, 0, 0, 0.25)",
+    borderRadius: 10,
+    color: "#ffbaba",
+    fontSize: 14,
+  },
+  resultBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.03)",
+  },
+  resultTitle: { fontWeight: 700, marginBottom: 6 },
+  resultHint: { opacity: 0.8, fontSize: 13, marginBottom: 8 },
+  link: { color: "#7aa2ff", textDecoration: "underline" },
+  upgrade: { marginTop: 8, fontSize: 13, opacity: 0.9 },
+  footer: { position: "fixed", bottom: 10, opacity: 0.6, fontSize: 12 },
+};
